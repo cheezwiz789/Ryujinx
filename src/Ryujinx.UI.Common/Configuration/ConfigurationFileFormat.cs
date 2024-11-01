@@ -85,11 +85,6 @@ namespace Ryujinx.UI.Common.Configuration
         /// </summary>
         public bool GraphicsEnableTextureDump { get; set; }
         /// <summary>
-        /// Enables real-time texture editing.
-        /// </summary>
-        public bool GraphicsEnableTextureRealTimeEdit { get; set; }
-
-        /// <summary>
         /// Enables printing debug log messages
         /// </summary>
         public bool LoggingEnableDebug { get; set; }

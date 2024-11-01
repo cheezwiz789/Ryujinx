@@ -333,11 +333,7 @@
                         <CheckBox IsChecked="{Binding EnableTextureDump}"
                             ToolTip.Tip="{locale:Locale GraphicsEnableTextureDumpTooltip}">
                             <TextBlock Text="{locale:Locale SettingsTabGraphicsEnableTextureDump}" />
-                        </CheckBox>
-                        <CheckBox IsChecked="{Binding EnableTextureRealTimeEditing}"
-                            ToolTip.Tip="{locale:Locale GraphicsEnableTextureRealTimeEditingTooltip}">
-                            <TextBlock Text="{locale:Locale SettingsTabGraphicsEnableTextureRealTimeEditing}" />
-                        </CheckBox>
+                        </CheckBox>                       
                     </StackPanel>
                 </StackPanel>
             </StackPanel>

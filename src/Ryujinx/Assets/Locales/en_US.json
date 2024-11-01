@@ -187,7 +187,6 @@
   "SettingsTabGraphicsTextureDumpFormatDds": "DDS (DirectDraw Surface)",
   "SettingsTabGraphicsTextureDumpFormatPng": "PNG (Portable Network Graphics)",
   "SettingsTabGraphicsEnableTextureDump": "Enable Texture Dump",
-  "SettingsTabGraphicsEnableTextureRealTimeEditing": "Enable Real Time Texture Editing",
   "SettingsTabLogging": "Logging",
   "SettingsTabLoggingLogging": "Logging",
   "SettingsTabLoggingEnableLoggingToFile": "Enable Logging to File",
@@ -610,7 +609,7 @@
   "TextureDumpPathTooltip": "Optional folder where all the game textures will be saved",
   "GraphicsTextureDumpFormatTooltip": "File format that will be used to save the game textures, if texture dumping is enabled",
   "GraphicsEnableTextureDumpTooltip": "Enables saving all game textures to the specified folder",
-  "GraphicsEnableTextureRealTimeEditingTooltip": "Enables applying changes to dumped textures into the game as the files are edited, in real time",
+  
   "FileLogTooltip": "Saves console logging to a log file on disk. Does not affect performance.",
   "StubLogTooltip": "Prints stub log messages in the console. Does not affect performance.",
   "InfoLogTooltip": "Prints info log messages in the console. Does not affect performance.",

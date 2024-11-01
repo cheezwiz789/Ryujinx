@@ -496,11 +496,6 @@ namespace Ryujinx.UI.Common.Configuration
             /// </summary>
             public ReactiveObject<bool> EnableTextureDump { get; private set; }
             /// <summary>
-            /// Enables real-time texture editing.
-            /// </summary>
-            public ReactiveObject<bool> EnableTextureRealTimeEdit { get; private set; }
-
-            /// <summary>
             /// Enables or disables Vertical Sync
             /// </summary>
             public ReactiveObject<bool> EnableVsync { get; private set; }
@@ -568,8 +563,6 @@ namespace Ryujinx.UI.Common.Configuration
                 TexturesDumpFileFormat.Event += static (sender, e) => LogValueChange(e, nameof(TexturesDumpFileFormat));
                 EnableTextureDump = new ReactiveObject<bool>();
                 EnableTextureDump.Event += static (sender, e) => LogValueChange(e, nameof(EnableTextureDump));
-                EnableTextureRealTimeEdit = new ReactiveObject<bool>();
-                EnableTextureRealTimeEdit.Event += static (sender, e) => LogValueChange(e, nameof(EnableTextureRealTimeEdit));
                 EnableVsync = new ReactiveObject<bool>();
                 EnableVsync.Event += static (_, e) => LogValueChange(e, nameof(EnableVsync));
                 EnableShaderCache = new ReactiveObject<bool>();
@@ -727,7 +720,6 @@ namespace Ryujinx.UI.Common.Configuration
                 GraphicsTexturesDumpPath = Graphics.TexturesDumpPath,
                 GraphicsTexturesDumpFileFormat = Graphics.TexturesDumpFileFormat,
                 GraphicsEnableTextureDump = Graphics.EnableTextureDump,
-                GraphicsEnableTextureRealTimeEdit = Graphics.EnableTextureRealTimeEdit,
                 LoggingEnableDebug = Logger.EnableDebug,
                 LoggingEnableStub = Logger.EnableStub,
                 LoggingEnableInfo = Logger.EnableInfo,
@@ -844,7 +836,6 @@ namespace Ryujinx.UI.Common.Configuration
             Graphics.TexturesDumpPath.Value = "";
             Graphics.TexturesDumpFileFormat.Value = TextureFileFormat.Dds;
             Graphics.EnableTextureDump.Value = true;
-            Graphics.EnableTextureRealTimeEdit.Value = true;
             Logger.EnableDebug.Value = false;
             Logger.EnableStub.Value = true;
             Logger.EnableInfo.Value = true;
@@ -1594,7 +1585,6 @@ namespace Ryujinx.UI.Common.Configuration
                 configurationFileFormat.GraphicsTexturesDumpPath = "";
                 configurationFileFormat.GraphicsTexturesDumpFileFormat = TextureFileFormat.Dds;
                 configurationFileFormat.GraphicsEnableTextureDump = true;
-                configurationFileFormat.GraphicsEnableTextureRealTimeEdit = true;
                 configurationFileUpdated = true;
             }
 
@@ -1607,7 +1597,6 @@ namespace Ryujinx.UI.Common.Configuration
             Graphics.TexturesDumpPath.Value = configurationFileFormat.GraphicsTexturesDumpPath;
             Graphics.TexturesDumpFileFormat.Value = configurationFileFormat.GraphicsTexturesDumpFileFormat;
             Graphics.EnableTextureDump.Value = configurationFileFormat.GraphicsEnableTextureDump;
-            Graphics.EnableTextureRealTimeEdit.Value = configurationFileFormat.GraphicsEnableTextureRealTimeEdit;
             Graphics.BackendThreading.Value = configurationFileFormat.BackendThreading;
             Graphics.GraphicsBackend.Value = configurationFileFormat.GraphicsBackend;
             Graphics.PreferredGpu.Value = configurationFileFormat.PreferredGpu;

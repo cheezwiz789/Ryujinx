@@ -507,7 +507,6 @@ namespace Ryujinx.Ava.UI.Windows
             GraphicsConfig.TextureDumpPath            = ConfigurationState.Instance.Graphics.TexturesDumpPath;
             GraphicsConfig.TextureDumpFormatPng       = ConfigurationState.Instance.Graphics.TexturesDumpFileFormat == TextureFileFormat.Png;
             GraphicsConfig.EnableTextureDump          = ConfigurationState.Instance.Graphics.EnableTextureDump;
-            GraphicsConfig.EnableTextureRealTimeEdit  = ConfigurationState.Instance.Graphics.EnableTextureRealTimeEdit;
 #pragma warning restore IDE0055
         }
 

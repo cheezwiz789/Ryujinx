@@ -85,9 +85,6 @@ namespace Ryujinx.Graphics.Gpu
         /// </summary>
         public static bool EnableTextureDump;
         /// <summary>
-        /// Monitors dumped texture files for change and applies them in real-time if enabled.
-        /// </summary>
-        public static bool EnableTextureRealTimeEdit;
     }
 #pragma warning restore CA2211
 }

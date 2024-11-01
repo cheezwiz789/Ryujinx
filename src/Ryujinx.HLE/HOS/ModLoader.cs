@@ -29,7 +29,6 @@ namespace Ryujinx.HLE.HOS
         private const string RomfsDir = "romfs";
         private const string ExefsDir = "exefs";
         private const string CheatDir = "cheats";
-        private const string TexturesDir = "textures";
         private const string RomfsContainer = "romfs.bin";
         private const string ExefsContainer = "exefs.nsp";
         private const string StubExtension = ".stub";
@@ -83,7 +82,6 @@ namespace Ryujinx.HLE.HOS
 
             public List<Mod<DirectoryInfo>> RomfsDirs { get; }
             public List<Mod<DirectoryInfo>> ExefsDirs { get; }
-            public List<Mod<DirectoryInfo>> TextureDirs { get; }
 
             public List<Cheat> Cheats { get; }
 
@@ -93,7 +91,6 @@ namespace Ryujinx.HLE.HOS
                 ExefsContainers = new List<Mod<FileInfo>>();
                 RomfsDirs = new List<Mod<DirectoryInfo>>();
                 ExefsDirs = new List<Mod<DirectoryInfo>>();
-                TextureDirs = new List<Mod<DirectoryInfo>>();
                 Cheats = new List<Cheat>();
             }
         }
@@ -191,14 +188,6 @@ namespace Ryujinx.HLE.HOS
                     mods.ExefsDirs.Add(mod = new Mod<DirectoryInfo>(dir.Name, modDir, enabled));
                     types.Append('E');
                 }
-                else if (StrEquals(TexturesDir, modDir.Name))
-                {
-                    var modData = modMetadata.Mods.Find(x => modDir.FullName.Contains(x.Path));
-                    var enabled = modData?.Enabled ?? true;
-                    mods.TextureDirs.Add(mod = new Mod<DirectoryInfo>(dir.Name, modDir, enabled));
-                    types.Append('T');
-                }
-
                 else if (StrEquals(CheatDir, modDir.Name))
                 {
                     types.Append('C', QueryCheatsDir(mods, modDir));
@@ -709,20 +698,6 @@ namespace Ryujinx.HLE.HOS
             // NSO patches are created with offset 0 according to Atmosphere's patcher module
             // But `Program` doesn't contain the header which is 0x100 bytes. So, we adjust for that here
             return ApplyProgramPatches(nsoMods, 0x100, programs);
-        }
-
-        internal void ApplyTextureMods(ulong applicationId, GpuContext gpuContext)
-        {
-            if (!_appMods.TryGetValue(applicationId, out ModCache mods) || mods.TextureDirs.Count == 0)
-            {
-                return;
-            }
-            var textureMods = mods.TextureDirs;
-            foreach (var mod in textureMods)
-            {
-                gpuContext.DiskTextureStorage.AddInputDirectory(mod.Path.FullName);
-                Logger.Info?.Print(LogClass.ModLoader, $"Found texture replacements on mod '{mod.Name}'");
-            }
         }
 
         internal void LoadCheats(ulong applicationId, ProcessTamperInfo tamperInfo, TamperMachine tamperMachine)
