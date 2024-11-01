@@ -122,7 +122,12 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     Thread.Sleep(10);
                 }
-            }            
+            }
+            if (_fileToTextureMap.TryGetValue(e.Name, out Texture texture))
+            {
+                texture.ForceReimport();
+            }
+
         }
         public void SetOutputDirectory(string directoryPath)
         {
@@ -153,6 +158,216 @@ namespace Ryujinx.Graphics.Gpu.Image
                 _outputDirectoryPath = null;
             }
         }
+                internal TextureInfoOverride? ImportTexture(out MemoryOwner<byte> cachedData, Texture texture, byte[] data)
+        {
+            cachedData = default;
+            return null;
+            if (!IsSupportedFormat(texture.Format))
+            {
+                return null;
+            }
+            TextureInfoOverride? infoOverride = ImportDdsTexture(out cachedData, texture, data);
+            if (!infoOverride.HasValue)
+            {
+                infoOverride = ImportPngTexture(out cachedData, texture, data);
+            }
+            return infoOverride;
+        }
+        private TextureInfoOverride? ImportDdsTexture(out MemoryOwner<byte> cachedData, Texture texture, byte[] data)
+        {
+            cachedData = default;
+            if (!IsSupportedFormat(texture.Format))
+            {
+                return null;
+            }
+            TextureRequest request = new(
+                texture.Width,
+                texture.Height,
+                texture.Depth,
+                texture.Layers,
+                texture.Info.Levels,
+                texture.Format,
+                texture.Target,
+                data);
+            ImageParameters parameters = default;
+            MemoryOwner<byte> buffer = null;
+            bool imported = false;
+            string fileName = BuildFileName(request, "dds");
+            foreach (string inputDirectoryPath in _importList)
+            {
+                string inputFileName = Path.Combine(inputDirectoryPath, fileName);
+                if (File.Exists(inputFileName))
+                {
+                    _fileToTextureMap.AddOrUpdate(fileName, texture, (key, old) => texture);
+                    byte[] imageFile = null;
+                    try
+                    {
+                        imageFile = File.ReadAllBytes(inputFileName);
+                    }
+                    catch (IOException ex)
+                    {
+                        LogReadException(ex, inputFileName);
+                        break;
+                    }
+                    ImageLoadResult loadResult = DdsFileFormat.TryLoadHeader(imageFile, out parameters);
+                    if (loadResult != ImageLoadResult.Success)
+                    {
+                        LogFailureResult(loadResult, inputFileName);
+                        break;
+                    }
+                    buffer = MemoryOwner<byte>.Rent(DdsFileFormat.CalculateSize(parameters));
+                    loadResult = DdsFileFormat.TryLoadData(imageFile, buffer.Span);
+                    if (loadResult != ImageLoadResult.Success)
+                    {
+                        LogFailureResult(loadResult, inputFileName);
+                        break;
+                    }
+                    imported = true;
+                    break;
+                }
+            }
+            if (!imported)
+            {
+                return null;
+            }
+            if (parameters.Format == ImageFormat.B8G8R8A8Srgb || parameters.Format == ImageFormat.B8G8R8A8Unorm)
+            {
+                ConvertBgraToRgbaInPlace(buffer.Span);
+            }
+            cachedData = buffer;
+            return new TextureInfoOverride(
+                parameters.Width,
+                parameters.Height,
+                parameters.DepthOrLayers,
+                parameters.Levels,
+                ConvertToFormat(parameters.Format));
+        }
+        private TextureInfoOverride? ImportPngTexture(out MemoryOwner<byte> cachedData, Texture texture, byte[] data)
+        {
+            cachedData = default;
+            if (!IsSupportedFormat(texture.Format))
+            {
+                return null;
+            }
+            TextureRequest request = new(
+                texture.Width,
+                texture.Height,
+                texture.Depth,
+                texture.Layers,
+                texture.Info.Levels,
+                texture.Format,
+                texture.Target,
+                data);
+            MemoryOwner<byte> buffer = null;
+            int importedFirstLevel = 0;
+            int importedWidth = 0;
+            int importedHeight = 0;
+            int levels = 0;
+            int slices = 0;
+            int writtenSize = 0;
+            int offset = 0;
+            DoForEachSlice(request, (level, slice, _, _) =>
+            {
+                int sliceSize = (importedWidth | importedHeight) != 0 ? Math.Max(1, importedWidth >> level) * Math.Max(1, importedHeight >> level) * 4 : 0;
+                bool imported = false;
+                string fileName = BuildFileName(request, level, slice, "png");
+                foreach (string inputDirectoryPath in _importList)
+                {
+                    string inputFileName = Path.Combine(inputDirectoryPath, fileName);
+                    if (File.Exists(inputFileName))
+                    {
+                        _fileToTextureMap.AddOrUpdate(fileName, texture, (key, old) => texture);
+                        byte[] imageFile = null;
+                        try
+                        {
+                            imageFile = File.ReadAllBytes(inputFileName);
+                        }
+                        catch (IOException ex)
+                        {
+                            LogReadException(ex, inputFileName);
+                            break;
+                        }
+                        ImageLoadResult loadResult = PngFileFormat.TryLoadHeader(imageFile, out ImageParameters parameters);
+                        if (loadResult != ImageLoadResult.Success)
+                        {
+                            LogFailureResult(loadResult, inputFileName);
+                            break;
+                        }
+                        int importedSizeWL = Math.Max(1, importedWidth >> level);
+                        int importedSizeHL = Math.Max(1, importedHeight >> level);
+                        if (writtenSize == 0 || (importedSizeWL == parameters.Width && importedSizeHL == parameters.Height))
+                        {
+                            if (writtenSize == 0)
+                            {
+                                importedFirstLevel = level;
+                                importedWidth = parameters.Width << level;
+                                importedHeight = parameters.Height << level;
+                                sliceSize = Math.Max(1, importedWidth >> level) * Math.Max(1, importedHeight >> level) * 4;
+                                buffer = MemoryOwner<byte>.Rent(CalculateSize(importedWidth, importedHeight, request.Depth, request.Layers, request.Levels));
+                            }
+                            loadResult = PngFileFormat.TryLoadData(imageFile, buffer.Span.Slice(offset, sliceSize));
+                            if (loadResult != ImageLoadResult.Success)
+                            {
+                                LogFailureResult(loadResult, inputFileName);
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        imported = true;
+                        break;
+                    }
+                }
+                if (imported)
+                {
+                    levels = level + 1;
+                    if (level == importedFirstLevel)
+                    {
+                        slices = slice + 1;
+                    }
+                    writtenSize = offset + sliceSize;
+                }
+                offset += sliceSize;
+                return imported;
+            });
+            if (writtenSize == 0)
+            {
+                return null;
+            }
+            if (writtenSize == buffer.Length)
+            {
+                cachedData = buffer;
+            }
+            else
+            {
+                using (buffer)
+                {
+                    cachedData = MemoryOwner<byte>.RentCopy(buffer.Span[..writtenSize]);
+                }
+            }
+            Format format;
+            if (IsSupportedSnormFormat(request.Format))
+            {
+                format = Format.R8G8B8A8Snorm;
+            }
+            else if (IsSupportedSrgbFormat(request.Format))
+            {
+                format = Format.R8G8B8A8Srgb;
+            }
+            else
+            {
+                format = Format.R8G8B8A8Unorm;
+            }
+            return new TextureInfoOverride(
+                importedWidth,
+                importedHeight,
+                slices,
+                levels,
+                new FormatInfo(format, 1, 1, 4, 4));
+        }
+
         private static int CalculateSize(int width, int height, int depth, int layers, int levels)
         {
             int size = 0;

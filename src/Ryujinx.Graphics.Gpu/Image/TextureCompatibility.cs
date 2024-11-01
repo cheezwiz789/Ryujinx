@@ -203,7 +203,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>True if the texture can flush, false otherwise</returns>
         public static bool CanTextureFlush(Texture texture, in Capabilities caps)
         {
-            return CanTextureFlush(texture.Info, caps);
+            return !texture.HasImportOverride() && CanTextureFlush(texture.Info, caps);
         }
 
         /// <summary>

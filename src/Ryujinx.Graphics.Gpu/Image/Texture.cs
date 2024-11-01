@@ -118,6 +118,10 @@ namespace Ryujinx.Graphics.Gpu.Image
         public int FirstLayer { get; private set; }
         public int FirstLevel { get; private set; }
 
+        private TextureInfoOverride? _importOverride;
+        private bool _forceReimport;
+        private readonly bool _forRender;
+
         private bool _hasData;
         private bool _dirty = true;
         private int _updateCount;
@@ -196,6 +200,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="firstLevel">The first mipmap level of the texture, or 0 if the texture has no parent</param>
         /// <param name="scaleFactor">The floating point scale factor to initialize with</param>
         /// <param name="scaleMode">The scale mode to initialize with</param>
+        /// <param name="forRender">Indicates that the texture will be modified by a draw or blit operation</param>
         private Texture(
             GpuContext context,
             PhysicalMemory physicalMemory,
@@ -205,7 +210,8 @@ namespace Ryujinx.Graphics.Gpu.Image
             int firstLayer,
             int firstLevel,
             float scaleFactor,
-            TextureScaleMode scaleMode)
+            TextureScaleMode scaleMode,
+            bool forRender)
         {
             InitializeTexture(context, physicalMemory, info, sizeInfo, range);
 
@@ -214,6 +220,8 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             ScaleFactor = scaleFactor;
             ScaleMode = scaleMode;
+
+            _forRender = forRender;
 
             InitializeData(true);
         }
@@ -227,17 +235,20 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="sizeInfo">Size information of the texture</param>
         /// <param name="range">Physical memory ranges where the texture data is located</param>
         /// <param name="scaleMode">The scale mode to initialize with. If scaled, the texture's data is loaded immediately and scaled up</param>
+        /// <param name="forRender">Indicates that the texture will be modified by a draw or blit operation</param>
         public Texture(
             GpuContext context,
             PhysicalMemory physicalMemory,
             TextureInfo info,
             SizeInfo sizeInfo,
             MultiRange range,
-            TextureScaleMode scaleMode)
+            TextureScaleMode scaleMode,
+            bool forRender)
         {
             ScaleFactor = 1f; // Texture is first loaded at scale 1x.
             ScaleMode = scaleMode;
 
+            _forRender = forRender;
 
             InitializeTexture(context, physicalMemory, info, sizeInfo, range);
         }
@@ -286,7 +297,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 Debug.Assert(!isView);
 
-                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
+                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor, _importOverride);
                 HostTexture = _context.Renderer.CreateTexture(createInfo);
 
                 SynchronizeMemory(); // Load the data.
@@ -310,7 +321,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                         ScaleFactor = GraphicsConfig.ResScale;
                     }
 
-                    TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
+                    TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor, _importOverride);
                     HostTexture = _context.Renderer.CreateTexture(createInfo);
                 }
             }
@@ -352,9 +363,10 @@ namespace Ryujinx.Graphics.Gpu.Image
                 FirstLayer + firstLayer,
                 FirstLevel + firstLevel,
                 ScaleFactor,
-                ScaleMode);
+                ScaleMode,
+                _forRender);
 
-            TextureCreateInfo createInfo = TextureCache.GetCreateInfo(info, _context.Capabilities, ScaleFactor);
+            TextureCreateInfo createInfo = TextureCache.GetCreateInfo(info, _context.Capabilities, ScaleFactor, null);
             texture.HostTexture = HostTexture.CreateView(createInfo, firstLayer, firstLevel);
 
             _viewStorage.AddView(texture);
@@ -498,7 +510,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             if (storage == null)
             {
-                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, scale);
+                TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, scale, _importOverride);
                 storage = _context.Renderer.CreateTexture(createInfo);
             }
 
@@ -549,7 +561,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                     Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
                     view.ScaleFactor = scale;
 
-                    TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
+                    TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale, _importOverride);
                     ITexture newView = HostTexture.CreateView(viewCreateInfo, view.FirstLayer - FirstLayer, view.FirstLevel - FirstLevel);
 
                     view.ReplaceStorage(newView);
@@ -579,6 +591,11 @@ namespace Ryujinx.Graphics.Gpu.Image
             return Group.CheckDirty(this, consume);
         }
 
+        public void ForceReimport()
+        {
+            _forceReimport = true;
+        }
+
         /// <summary>
         /// Discards all data for this texture.
         /// This clears all dirty flags and pending copies from other textures.
@@ -602,6 +619,14 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             if (Target == Target.TextureBuffer)
             {
+                return;
+            }
+
+            if (_forceReimport)
+            {
+                SynchronizeFull();
+
+                _forceReimport = false;
                 return;
             }
 
@@ -651,7 +676,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             // The decompression is slow, so we want to avoid it as much as possible.
             // This does a byte-by-byte check and skips the update if the data is equal in this case.
             // This improves the speed on applications that overwrites ASTC data without changing anything.
-            if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression)
+            if (Info.FormatInfo.Format.IsAstc() && !_context.Capabilities.SupportsAstcCompression && !_forceReimport)
             {
                 if (_updateCount < ByteComparisonSwitchThreshold)
                 {
@@ -696,6 +721,11 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             BlacklistScale();
 
+            if (HasImportOverride())
+            {
+                return;
+            }
+
             Group.CheckDirty(this, true);
 
             AlwaysFlushOnOverlap = true;
@@ -732,6 +762,11 @@ namespace Ryujinx.Graphics.Gpu.Image
         public void SetData(MemoryOwner<byte> data, int layer, int level, Rectangle<int> region)
         {
             BlacklistScale();
+
+            if (HasImportOverride())
+            {
+                return;
+            }
 
             HostTexture.SetData(data, layer, level, region);
 
@@ -797,7 +832,41 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             MemoryOwner<byte> result = linear;
             FormatInfo formatInfo = Info.FormatInfo;
-            
+            if (_context.DiskTextureStorage.IsActive && !_forRender)
+            {
+                TextureInfoOverride? importOverride = _context.DiskTextureStorage.ImportTexture(out var importedTexture, this, result.Memory.ToArray());
+                if (importOverride.HasValue)
+                {
+                    if (!_importOverride.HasValue || !_importOverride.Equals(importOverride))
+                    {
+                        bool hadImportOverride = HasImportOverride();
+                        _importOverride = importOverride;
+                        if (hadImportOverride || HasImportOverride())
+                        {
+                            InvalidatedSequence++;
+                            TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor, importOverride);
+                            ReplaceStorage(_context.Renderer.CreateTexture(createInfo));
+                            if (_viewStorage != this)
+                            {
+                                _viewStorage.RemoveView(this);
+                            }
+                        }
+                    }
+                    TextureInfoOverride infoOverride = importOverride.Value;
+                    width = infoOverride.Width;
+                    height = infoOverride.Height;
+                    sliceDepth = Target == Target.Texture3D ? infoOverride.DepthOrLayers : 1;
+                    layers = Target != Target.Texture3D ? Info.DepthOrLayers : 1;
+                    levels = infoOverride.Levels;
+                    formatInfo = infoOverride.FormatInfo;
+                    result.Dispose();
+                    result = importedTexture;
+                }
+                else if (!_hasData)
+                {
+                    _context.DiskTextureStorage.EnqueueTextureDataForExport(this, result.Memory.ToArray());
+                }
+            }
 
             // Handle compressed cases not supported by the host:
             // - ASTC is usually not supported on desktop cards.
@@ -1308,6 +1377,22 @@ namespace Ryujinx.Graphics.Gpu.Image
             return result;
         }
 
+        public bool HasImportOverride()
+        {
+            if (_importOverride.HasValue)
+            {
+                TextureInfoOverride importOverride = _importOverride.Value;
+
+                return importOverride.Width != Info.Width ||
+                    importOverride.Height != Info.Height ||
+                    importOverride.DepthOrLayers != Info.GetDepthOrLayers() ||
+                    importOverride.Levels != Info.Levels ||
+                    importOverride.FormatInfo.Format != Info.FormatInfo.Format;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Gets a texture of the specified target type from this texture.
         /// This can be used to get an array texture from a non-array texture and vice-versa.
@@ -1427,7 +1512,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 foreach (Texture view in viewCopy)
                 {
-                    TextureCreateInfo createInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, ScaleFactor);
+                    TextureCreateInfo createInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, ScaleFactor, null);
 
                     ITexture newView = parent.HostTexture.CreateView(createInfo, view.FirstLayer + firstLayer, view.FirstLevel + firstLevel);
 
