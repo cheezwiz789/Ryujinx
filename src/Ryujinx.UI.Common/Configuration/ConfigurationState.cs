@@ -145,16 +145,6 @@ namespace Ryujinx.UI.Common.Configuration
             public ReactiveObject<string> LanguageCode { get; private set; }
 
             /// <summary>
-            /// Enable or disable custom themes in the GUI
-            /// </summary>
-            public ReactiveObject<bool> EnableCustomTheme { get; private set; }
-
-            /// <summary>
-            /// Path to custom GUI theme
-            /// </summary>
-            public ReactiveObject<string> CustomThemePath { get; private set; }
-
-            /// <summary>
             /// Selects the base style
             /// </summary>
             public ReactiveObject<string> BaseStyle { get; private set; }
@@ -202,8 +192,6 @@ namespace Ryujinx.UI.Common.Configuration
                 AutoloadDirs = new ReactiveObject<List<string>>();
                 ShownFileTypes = new ShownFileTypeSettings();
                 WindowStartup = new WindowStartupSettings();
-                EnableCustomTheme = new ReactiveObject<bool>();
-                CustomThemePath = new ReactiveObject<string>();
                 BaseStyle = new ReactiveObject<string>();
                 StartFullscreen = new ReactiveObject<bool>();
                 GameListViewMode = new ReactiveObject<int>();
@@ -805,8 +793,6 @@ namespace Ryujinx.UI.Common.Configuration
                     WindowMaximized = UI.WindowStartup.WindowMaximized,
                 },
                 LanguageCode = UI.LanguageCode,
-                EnableCustomTheme = UI.EnableCustomTheme,
-                CustomThemePath = UI.CustomThemePath,
                 BaseStyle = UI.BaseStyle,
                 GameListViewMode = UI.GameListViewMode,
                 ShowNames = UI.ShowNames,
@@ -853,7 +839,7 @@ namespace Ryujinx.UI.Common.Configuration
             Logger.EnableTrace.Value = false;
             Logger.EnableGuest.Value = true;
             Logger.EnableFsAccessLog.Value = false;
-            Logger.FilteredClasses.Value = Array.Empty<LogClass>();
+            Logger.FilteredClasses.Value = [];
             Logger.GraphicsDebugLevel.Value = GraphicsDebugLevel.None;
             System.Language.Value = Language.AmericanEnglish;
             System.Region.Value = Region.USA;
@@ -900,17 +886,15 @@ namespace Ryujinx.UI.Common.Configuration
             UI.GuiColumns.PathColumn.Value = true;
             UI.ColumnSort.SortColumnId.Value = 0;
             UI.ColumnSort.SortAscending.Value = false;
-            UI.GameDirs.Value = new List<string>();
-            UI.AutoloadDirs.Value = new List<string>();
+            UI.GameDirs.Value = [];
+            UI.AutoloadDirs.Value = [];
             UI.ShownFileTypes.NSP.Value = true;
             UI.ShownFileTypes.PFS0.Value = true;
             UI.ShownFileTypes.XCI.Value = true;
             UI.ShownFileTypes.NCA.Value = true;
             UI.ShownFileTypes.NRO.Value = true;
             UI.ShownFileTypes.NSO.Value = true;
-            UI.EnableCustomTheme.Value = true;
             UI.LanguageCode.Value = "en_US";
-            UI.CustomThemePath.Value = "";
             UI.BaseStyle.Value = "Dark";
             UI.GameListViewMode.Value = 0;
             UI.ShowNames.Value = true;
@@ -1673,9 +1657,7 @@ namespace Ryujinx.UI.Common.Configuration
             UI.ShownFileTypes.NCA.Value = configurationFileFormat.ShownFileTypes.NCA;
             UI.ShownFileTypes.NRO.Value = configurationFileFormat.ShownFileTypes.NRO;
             UI.ShownFileTypes.NSO.Value = configurationFileFormat.ShownFileTypes.NSO;
-            UI.EnableCustomTheme.Value = configurationFileFormat.EnableCustomTheme;
             UI.LanguageCode.Value = configurationFileFormat.LanguageCode;
-            UI.CustomThemePath.Value = configurationFileFormat.CustomThemePath;
             UI.BaseStyle.Value = configurationFileFormat.BaseStyle;
             UI.GameListViewMode.Value = configurationFileFormat.GameListViewMode;
             UI.ShowNames.Value = configurationFileFormat.ShowNames;
