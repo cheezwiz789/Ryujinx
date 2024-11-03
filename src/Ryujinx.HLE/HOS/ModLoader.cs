@@ -720,6 +720,10 @@ namespace Ryujinx.HLE.HOS
             var textureMods = mods.TextureDirs;
             foreach (var mod in textureMods)
             {
+                if (!mod.Enabled)
+                {
+                    continue;
+                }
                 gpuContext.DiskTextureStorage.AddInputDirectory(mod.Path.FullName);
                 Logger.Info?.Print(LogClass.ModLoader, $"Found texture replacements on mod '{mod.Name}'");
             }
