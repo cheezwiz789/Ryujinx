@@ -72,7 +72,6 @@ namespace Ryujinx.Graphics.Gpu.Image
         private readonly List<string> _importList;
         private readonly ConcurrentDictionary<string, long> _newDumpFiles;
         private readonly ConcurrentDictionary<string, Texture> _fileToTextureMap;
-        private FileSystemWatcher _fileSystemWatcher;
         private string _outputDirectoryPath;
         private FileFormat _outputFormat;
         private bool _enableTextureDump;
@@ -162,225 +161,8 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             cachedData = default;
             return null;
-            if (!IsSupportedFormat(texture.Format))
-            {
-                return null;
-            }
-            TextureInfoOverride? infoOverride = ImportDdsTexture(out cachedData, texture, data);
-            if (!infoOverride.HasValue)
-            {
-                infoOverride = ImportPngTexture(out cachedData, texture, data);
-            }
-            return infoOverride;
         }
-        private TextureInfoOverride? ImportDdsTexture(out MemoryOwner<byte> cachedData, Texture texture, byte[] data)
-        {
-            cachedData = default;
-            if (!IsSupportedFormat(texture.Format))
-            {
-                return null;
-            }
-            TextureRequest request = new(
-                texture.Width,
-                texture.Height,
-                texture.Depth,
-                texture.Layers,
-                texture.Info.Levels,
-                texture.Format,
-                texture.Target,
-                data);
-            ImageParameters parameters = default;
-            MemoryOwner<byte> buffer = null;
-            bool imported = false;
-            string fileName = BuildFileName(request, "dds");
-            foreach (string inputDirectoryPath in _importList)
-            {
-                string inputFileName = Path.Combine(inputDirectoryPath, fileName);
-                if (File.Exists(inputFileName))
-                {
-                    _fileToTextureMap.AddOrUpdate(fileName, texture, (key, old) => texture);
-                    byte[] imageFile = null;
-                    try
-                    {
-                        imageFile = File.ReadAllBytes(inputFileName);
-                    }
-                    catch (IOException ex)
-                    {
-                        LogReadException(ex, inputFileName);
-                        break;
-                    }
-                    ImageLoadResult loadResult = DdsFileFormat.TryLoadHeader(imageFile, out parameters);
-                    if (loadResult != ImageLoadResult.Success)
-                    {
-                        LogFailureResult(loadResult, inputFileName);
-                        break;
-                    }
-                    buffer = MemoryOwner<byte>.Rent(DdsFileFormat.CalculateSize(parameters));
-                    loadResult = DdsFileFormat.TryLoadData(imageFile, buffer.Span);
-                    if (loadResult != ImageLoadResult.Success)
-                    {
-                        LogFailureResult(loadResult, inputFileName);
-                        break;
-                    }
-                    imported = true;
-                    break;
-                }
-            }
-            if (!imported)
-            {
-                return null;
-            }
-            if (parameters.Format == ImageFormat.B8G8R8A8Srgb || parameters.Format == ImageFormat.B8G8R8A8Unorm)
-            {
-                ConvertBgraToRgbaInPlace(buffer.Span);
-            }
-            cachedData = buffer;
-            return new TextureInfoOverride(
-                parameters.Width,
-                parameters.Height,
-                parameters.DepthOrLayers,
-                parameters.Levels,
-                ConvertToFormat(parameters.Format));
-        }
-        private TextureInfoOverride? ImportPngTexture(out MemoryOwner<byte> cachedData, Texture texture, byte[] data)
-        {
-            cachedData = default;
-            if (!IsSupportedFormat(texture.Format))
-            {
-                return null;
-            }
-            TextureRequest request = new(
-                texture.Width,
-                texture.Height,
-                texture.Depth,
-                texture.Layers,
-                texture.Info.Levels,
-                texture.Format,
-                texture.Target,
-                data);
-            MemoryOwner<byte> buffer = null;
-            int importedFirstLevel = 0;
-            int importedWidth = 0;
-            int importedHeight = 0;
-            int levels = 0;
-            int slices = 0;
-            int writtenSize = 0;
-            int offset = 0;
-            DoForEachSlice(request, (level, slice, _, _) =>
-            {
-                int sliceSize = (importedWidth | importedHeight) != 0 ? Math.Max(1, importedWidth >> level) * Math.Max(1, importedHeight >> level) * 4 : 0;
-                bool imported = false;
-                string fileName = BuildFileName(request, level, slice, "png");
-                foreach (string inputDirectoryPath in _importList)
-                {
-                    string inputFileName = Path.Combine(inputDirectoryPath, fileName);
-                    if (File.Exists(inputFileName))
-                    {
-                        _fileToTextureMap.AddOrUpdate(fileName, texture, (key, old) => texture);
-                        byte[] imageFile = null;
-                        try
-                        {
-                            imageFile = File.ReadAllBytes(inputFileName);
-                        }
-                        catch (IOException ex)
-                        {
-                            LogReadException(ex, inputFileName);
-                            break;
-                        }
-                        ImageLoadResult loadResult = PngFileFormat.TryLoadHeader(imageFile, out ImageParameters parameters);
-                        if (loadResult != ImageLoadResult.Success)
-                        {
-                            LogFailureResult(loadResult, inputFileName);
-                            break;
-                        }
-                        int importedSizeWL = Math.Max(1, importedWidth >> level);
-                        int importedSizeHL = Math.Max(1, importedHeight >> level);
-                        if (writtenSize == 0 || (importedSizeWL == parameters.Width && importedSizeHL == parameters.Height))
-                        {
-                            if (writtenSize == 0)
-                            {
-                                importedFirstLevel = level;
-                                importedWidth = parameters.Width << level;
-                                importedHeight = parameters.Height << level;
-                                sliceSize = Math.Max(1, importedWidth >> level) * Math.Max(1, importedHeight >> level) * 4;
-                                buffer = MemoryOwner<byte>.Rent(CalculateSize(importedWidth, importedHeight, request.Depth, request.Layers, request.Levels));
-                            }
-                            loadResult = PngFileFormat.TryLoadData(imageFile, buffer.Span.Slice(offset, sliceSize));
-                            if (loadResult != ImageLoadResult.Success)
-                            {
-                                LogFailureResult(loadResult, inputFileName);
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            break;
-                        }
-                        imported = true;
-                        break;
-                    }
-                }
-                if (imported)
-                {
-                    levels = level + 1;
-                    if (level == importedFirstLevel)
-                    {
-                        slices = slice + 1;
-                    }
-                    writtenSize = offset + sliceSize;
-                }
-                offset += sliceSize;
-                return imported;
-            });
-            if (writtenSize == 0)
-            {
-                return null;
-            }
-            if (writtenSize == buffer.Length)
-            {
-                cachedData = buffer;
-            }
-            else
-            {
-                using (buffer)
-                {
-                    cachedData = MemoryOwner<byte>.RentCopy(buffer.Span[..writtenSize]);
-                }
-            }
-            Format format;
-            if (IsSupportedSnormFormat(request.Format))
-            {
-                format = Format.R8G8B8A8Snorm;
-            }
-            else if (IsSupportedSrgbFormat(request.Format))
-            {
-                format = Format.R8G8B8A8Srgb;
-            }
-            else
-            {
-                format = Format.R8G8B8A8Unorm;
-            }
-            return new TextureInfoOverride(
-                importedWidth,
-                importedHeight,
-                slices,
-                levels,
-                new FormatInfo(format, 1, 1, 4, 4));
-        }
-
-        private static int CalculateSize(int width, int height, int depth, int layers, int levels)
-        {
-            int size = 0;
-            for (int level = 0; level < levels; level++)
-            {
-                int w = Math.Max(1, width >> level);
-                int h = Math.Max(1, height >> level);
-                int d = Math.Max(1, depth >> level);
-                int sliceSize = w * h * 4;
-                size += sliceSize * layers * d;
-            }
-            return size;
-        }
+        
         internal void EnqueueTextureDataForExport(Texture texture, byte[] data)
         {
             if (_enableTextureDump && !string.IsNullOrEmpty(_outputDirectoryPath))
@@ -719,13 +501,6 @@ namespace Ryujinx.Graphics.Gpu.Image
                 out MemoryOwner<byte> decoded);
             return decoded;
         }
-        private static void ConvertBgraToRgbaInPlace(Span<byte> buffer)
-        {
-            for (int i = 0; i < buffer.Length; i += 4)
-            {
-                (buffer[i + 2], buffer[i]) = (buffer[i], buffer[i + 2]);
-            }
-        }
         private static MemoryOwner<byte> ConvertRToRgba(ReadOnlySpan<byte> input, in TextureRequest request)
         {
             MemoryOwner<byte> output = MemoryOwner<byte>.Rent(CalculateSize(request, 4));
@@ -797,71 +572,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 size += w * h * d;
             }
             return size * bpp;
-        }
-        private static bool IsSupportedFormat(Format format)
-        {
-            switch (format)
-            {
-                case Format.Astc4x4Srgb:
-                case Format.Astc4x4Unorm:
-                case Format.Astc5x4Srgb:
-                case Format.Astc5x4Unorm:
-                case Format.Astc5x5Srgb:
-                case Format.Astc5x5Unorm:
-                case Format.Astc6x5Srgb:
-                case Format.Astc6x5Unorm:
-                case Format.Astc6x6Srgb:
-                case Format.Astc6x6Unorm:
-                case Format.Astc8x5Srgb:
-                case Format.Astc8x5Unorm:
-                case Format.Astc8x6Srgb:
-                case Format.Astc8x6Unorm:
-                case Format.Astc8x8Srgb:
-                case Format.Astc8x8Unorm:
-                case Format.Astc10x5Srgb:
-                case Format.Astc10x5Unorm:
-                case Format.Astc10x6Srgb:
-                case Format.Astc10x6Unorm:
-                case Format.Astc10x8Srgb:
-                case Format.Astc10x8Unorm:
-                case Format.Astc10x10Srgb:
-                case Format.Astc10x10Unorm:
-                case Format.Astc12x10Srgb:
-                case Format.Astc12x10Unorm:
-                case Format.Astc12x12Srgb:
-                case Format.Astc12x12Unorm:
-                case Format.Bc1RgbaSrgb:
-                case Format.Bc1RgbaUnorm:
-                case Format.Bc2Srgb:
-                case Format.Bc2Unorm:
-                case Format.Bc3Srgb:
-                case Format.Bc3Unorm:
-                case Format.Bc4Unorm:
-                case Format.Bc5Snorm:
-                case Format.Bc5Unorm:
-                case Format.Bc7Srgb:
-                case Format.Bc7Unorm:
-                case Format.Etc2RgbaSrgb:
-                case Format.Etc2RgbaUnorm:
-                case Format.Etc2RgbSrgb:
-                case Format.Etc2RgbUnorm:
-                case Format.Etc2RgbPtaSrgb:
-                case Format.Etc2RgbPtaUnorm:
-                case Format.R8Unorm:
-                case Format.R8G8Unorm:
-                case Format.R8G8B8A8Unorm:
-                case Format.R8G8B8A8Srgb:
-                case Format.B5G6R5Unorm:
-                case Format.R5G6B5Unorm:
-                case Format.B5G5R5A1Unorm:
-                case Format.R5G5B5X1Unorm:
-                case Format.R5G5B5A1Unorm:
-                case Format.A1B5G5R5Unorm:
-                case Format.R4G4B4A4Unorm:
-                    return true;
-            }
-            return false;
-        }
+        }       
         private static bool IsSupportedSrgbFormat(Format format)
         {
             switch (format)
@@ -891,65 +602,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                     return true;
             }
             return false;
-        }
-        private static bool IsSupportedSnormFormat(Format format)
-        {
-            return format == Format.Bc5Snorm;
-        }
-        private static FormatInfo ConvertToFormat(ImageFormat format)
-        {
-            return format switch
-            {
-                ImageFormat.Bc1RgbaSrgb => new FormatInfo(Format.Bc1RgbaSrgb, 4, 4, 8, 4),
-                ImageFormat.Bc1RgbaUnorm => new FormatInfo(Format.Bc1RgbaUnorm, 4, 4, 8, 4),
-                ImageFormat.Bc2Srgb => new FormatInfo(Format.Bc2Srgb, 4, 4, 16, 4),
-                ImageFormat.Bc2Unorm => new FormatInfo(Format.Bc2Unorm, 4, 4, 16, 4),
-                ImageFormat.Bc3Srgb => new FormatInfo(Format.Bc3Srgb, 4, 4, 16, 4),
-                ImageFormat.Bc3Unorm => new FormatInfo(Format.Bc3Unorm, 4, 4, 16, 4),
-                ImageFormat.Bc4Snorm => new FormatInfo(Format.Bc4Snorm, 4, 4, 8, 1),
-                ImageFormat.Bc4Unorm => new FormatInfo(Format.Bc4Unorm, 4, 4, 8, 1),
-                ImageFormat.Bc5Snorm => new FormatInfo(Format.Bc5Snorm, 4, 4, 16, 2),
-                ImageFormat.Bc5Unorm => new FormatInfo(Format.Bc5Unorm, 4, 4, 16, 2),
-                ImageFormat.Bc7Srgb => new FormatInfo(Format.Bc7Srgb, 4, 4, 16, 4),
-                ImageFormat.Bc7Unorm => new FormatInfo(Format.Bc7Unorm, 4, 4, 16, 4),
-                ImageFormat.R8Unorm => new FormatInfo(Format.R8Unorm, 1, 1, 1, 1),
-                ImageFormat.R8G8Unorm => new FormatInfo(Format.R8G8Unorm, 1, 1, 2, 2),
-                ImageFormat.R8G8B8A8Srgb or ImageFormat.B8G8R8A8Srgb => new FormatInfo(Format.R8G8B8A8Srgb, 1, 1, 4, 4),
-                ImageFormat.R8G8B8A8Unorm or ImageFormat.B8G8R8A8Unorm => new FormatInfo(Format.R8G8B8A8Unorm, 1, 1, 4, 4),
-                ImageFormat.R5G6B5Unorm => new FormatInfo(Format.R5G6B5Unorm, 1, 1, 2, 3),
-                ImageFormat.R5G5B5A1Unorm => new FormatInfo(Format.R5G5B5A1Unorm, 1, 1, 2, 4),
-                ImageFormat.R4G4B4A4Unorm => new FormatInfo(Format.R4G4B4A4Unorm, 1, 1, 2, 4),
-                _ => throw new ArgumentException($"Invalid format {format}."),
-            };
-        }
-        private static void LogFailureResult(ImageLoadResult result, string fullPath)
-        {
-            string fileName = Path.GetFileName(fullPath);
-            switch (result)
-            {
-                case ImageLoadResult.CorruptedHeader:
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\" because the file header is corrupted.");
-                    break;
-                case ImageLoadResult.CorruptedData:
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\" because the file data is corrupted.");
-                    break;
-                case ImageLoadResult.DataTooShort:
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\" because some data is missing from the file.");
-                    break;
-                case ImageLoadResult.OutputTooShort:
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\" because the output buffer was not large enough.");
-                    break;
-                case ImageLoadResult.UnsupportedFormat:
-                    Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\" because the image format is not currently supported.");
-                    break;
-            }
-        }
-        private static void LogReadException(IOException exception, string fullPath)
-        {
-            Logger.Error?.Print(LogClass.Gpu, exception.ToString());
-            string fileName = Path.GetFileName(fullPath);
-            Logger.Error?.Print(LogClass.Gpu, $"Failed to load \"{fileName}\", see logged exception for details.");
-        }
+        }        
         private static void LogWriteException(IOException exception, string fullPath)
         {
             Logger.Error?.Print(LogClass.Gpu, exception.ToString());
