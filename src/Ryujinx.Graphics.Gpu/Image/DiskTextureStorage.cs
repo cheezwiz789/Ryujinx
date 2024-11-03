@@ -221,7 +221,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 imageDimensions);
             try
             {
-                using FileStream fs = new(outputFileName, FileMode.Create);
+                using FileStream fs = new(outputFileName, FileMode.CreateNew);
                 DdsFileFormat.Save(fs, parameters, data);
             }
             catch (IOException ex)
@@ -253,7 +253,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 ImageParameters parameters = new(w, h, 1, 1, ImageFormat.R8G8B8A8Unorm, ImageDimensions.Dim2D);
                 try
                 {
-                    using FileStream fs = new(outputFileName, FileMode.Create);
+                    using FileStream fs = new(outputFileName, FileMode.CreateNew);
                     PngFileFormat.Save(fs, parameters, buffer.Slice(offset, sliceSize), fastMode: true);
                 }
                 catch (IOException ex)
