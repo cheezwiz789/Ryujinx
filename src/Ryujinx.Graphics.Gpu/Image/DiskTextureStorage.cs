@@ -15,7 +15,6 @@ namespace Ryujinx.Graphics.Gpu.Image
 {
     public class DiskTextureStorage
     {
-        private const long MinTimeDeltaForRealTimeLoad = 5; // Seconds.
         private const int StrideAlignment = 4;
         private enum FileFormat
         {
@@ -96,38 +95,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 _exportQueue = new AsyncWorkQueue<(Texture, TextureRequest)>(ExportTexture, "GPU.TextureExportQueue");
             }
-        }
-        private void OnChanged(object sender, FileSystemEventArgs e)
-        {
-            if (e.ChangeType != WatcherChangeTypes.Changed)
-            {
-                return;
-            }
-            // If this a new file that we just created, ignore it.
-            if (_newDumpFiles.TryGetValue(e.FullPath, out long savedTimestamp) &&
-                TryGetFileTimestamp(e.FullPath, out long currentTimestamp) &&
-                savedTimestamp > currentTimestamp - MinTimeDeltaForRealTimeLoad)
-            {
-                return;
-            }
-            for (int attempt = 0; attempt < 100; attempt++)
-            {
-                try
-                {
-                    File.ReadAllBytes(e.FullPath);
-                    break;
-                }
-                catch (Exception)
-                {
-                    Thread.Sleep(10);
-                }
-            }
-            if (_fileToTextureMap.TryGetValue(e.Name, out Texture texture))
-            {
-                texture.ForceReimport();
-            }
-
-        }
+        }       
         public void SetOutputDirectory(string directoryPath)
         {
             string previousOutputDirectoryPath = _outputDirectoryPath;
