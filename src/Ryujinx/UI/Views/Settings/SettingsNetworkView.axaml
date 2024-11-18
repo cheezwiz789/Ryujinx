@@ -87,6 +87,18 @@
                     IsVisible="{Binding IsInvalidLdnPassphraseVisible}"
                     Focusable="False"
                     Text="{ext:Locale InvalidLdnPassphrase}" />
+                <!--Really should add some stuff in the below stack panel to locale and get it from there-->
+                <StackPanel Margin="10,0,0,0" Orientation="Horizontal">
+                    <TextBlock VerticalAlignment="Center"
+                        Text="LdnServer"
+                        ToolTip.Tip="Ldn Server"
+                        Width="200" />
+                    <TextBox Name="LdnServer"
+                        Text="{Binding LdnServer}"
+                        Width="250"
+                        ToolTip.Tip="LdnServer"
+                        Watermark="LdnServerInputPublic" />
+                </StackPanel>
                 <Separator Height="1" />
                 <TextBlock Classes="h1" Text="{ext:Locale SettingsTabNetworkConnection}" />
                 <CheckBox Margin="10,0,0,0" IsChecked="{Binding EnableInternetAccess}">
